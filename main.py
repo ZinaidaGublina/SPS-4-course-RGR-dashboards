@@ -82,7 +82,13 @@ app.layout = dbc.Container([
 def update_charts(period, loan_types):
     filtered_df = df[df['ТипКредита'].isin(loan_types)]
 
-    # Агрегация по времени
+    # Преобразуем 'Дата' в datetime
+    filtered_df['Дата'] = pd.to_datetime(filtered_df['Дата'], errors='coerce')
+
+    if filtered_df['Дата'].isna().any():
+        print("Внимание: в колонке 'Дата' есть некорректные значения!")
+
+    # Агрегация по периоду
     dfg = filtered_df.resample(period, on='Дата').agg({
         'ЗаявкаID': 'count',
         'Одобрено': 'sum',
