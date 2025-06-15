@@ -1,0 +1,8 @@
+pip install dash pandas plotly dash-bootstrap-components
+pip install python-telegram-bot --pre
+
+
+-telegram-bot==20.0
+pandas
+matplotlib
+plotly
