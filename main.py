@@ -127,7 +127,7 @@ def update_charts(n, period):
 app.layout.children.append(
     dcc.Interval(
         id='interval-component',
-        interval=3 * 1000,  # каждые 3 секунд
+        interval=10 * 1000,  # каждые 10 секунд
         n_intervals=0
     )
 )
