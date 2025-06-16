@@ -1,21 +1,19 @@
 import dash
 from dash import dcc, html, Input, Output
-from dash import dash_table
 import dash_bootstrap_components as dbc
 import pandas as pd
 import plotly.express as px
-# Загрузка данных
-df = pd.read_csv('data.csv')
+from dash import dash_table
 
 # Инициализация приложения
 app = dash.Dash(__name__, external_stylesheets=[dbc.themes.BOOTSTRAP])
-server = app.server  # Для развертывания
+server = app.server
 
 # Макет дашборда
 app.layout = dbc.Container([
-    html.H1("Дашборд по анализу заявок на кредитование", className="text-center my-4"),
-    html.P("Интерактивный инструмент для анализа эффективности обработки заявок на кредитование.", className="lead text-center"),
+    html.H1("Дашборд по заявкам на кредит", className="text-center my-4"),
 
+    # Выбор периода
     dbc.Row([
         dbc.Col([
             html.Label("Выберите период анализа"),
@@ -28,105 +26,111 @@ app.layout = dbc.Container([
                 ],
                 value='ME'
             )
-        ], width=4),
-        dbc.Col([
-            html.Label("Фильтр по типу кредита"),
-            dcc.Dropdown(
-                id='dropdown-type',
-                options=[{'label': t, 'value': t} for t in df['ТипКредита'].unique()],
-                value=df['ТипКредита'].unique().tolist(),
-                multi=True
-            )
-        ], width=8)
+        ], width=4)
     ]),
 
+    # Графики
     dbc.Row([
         dbc.Col(dcc.Graph(id='approved-vs-rejected'), width=6),
         dbc.Col(dcc.Graph(id='avg-loan-by-type'), width=6)
     ]),
 
     dbc.Row([
-        dbc.Col(dcc.Graph(id='processing-time-histogram'), width=6),
-        dbc.Col(dcc.Graph(id='scatter-rating-vs-income'), width=6)
+        dbc.Col(dcc.Graph(id='scatter-rating-vs-income'), width=12)
     ]),
 
     dbc.Row([
         dbc.Col(html.Div(id='indicators'), width=12)
     ]),
 
+    # Таблица данных
     dbc.Row([
         dbc.Col([
-            html.H4("Таблица заявок"),
+            html.H4("Все заявки"),
             dash_table.DataTable(
                 id='datatable',
-                columns=[{"name": i, "id": i} for i in df.columns],
-                data=df.to_dict('records'),
-                page_size=10
+                columns=[{"name": i, "id": i} for i in pd.read_csv('data.csv').columns if i != 'Телефон'],
+                data=[],  # заполняется через callback
+                page_size=10,
+                sort_action='native',
+                filter_action='native',
+                style_cell={'textAlign': 'left'},
+                style_header={'backgroundColor': '#f2f2f2', 'fontWeight': 'bold'}
             )
         ])
     ])
 
 ], fluid=True)
 
-# --- Callbacks ---
+
+# --- Callback для обновления графиков и таблицы ---
 @app.callback(
     [Output('approved-vs-rejected', 'figure'),
      Output('avg-loan-by-type', 'figure'),
-     Output('processing-time-histogram', 'figure'),
      Output('scatter-rating-vs-income', 'figure'),
+     Output('indicators', 'children'),
      Output('datatable', 'data'),
-     Output('indicators', 'children')],
-    [Input('dropdown-period', 'value'),
-     Input('dropdown-type', 'value')]
+     Output('datatable', 'columns')],
+    Input('interval-component', 'n_intervals'),
+    Input('dropdown-period', 'value')
 )
-def update_charts(period, loan_types):
-    # ✅ Читаем CSV при каждом обновлении
+def update_charts(n, period):
     df = pd.read_csv('data.csv')
     df['Дата'] = pd.to_datetime(df['Дата'], errors='coerce')
 
-    filtered_df = df[df['ТипКредита'].isin(loan_types)]
-
-    # Преобразуем 'Дата' в datetime
-    filtered_df['Дата'] = pd.to_datetime(filtered_df['Дата'], errors='coerce')
-
-    if filtered_df['Дата'].isna().any():
-        print("Внимание: в колонке 'Дата' есть некорректные значения!")
-
-    # Агрегация по периоду
-    dfg = filtered_df.resample(period, on='Дата').agg({
-        'ЗаявкаID': 'count',
+    # Агрегация по выбранному периоду
+    dfg = df.resample(period, on='Дата').agg({
         'Одобрено': 'sum',
+        'ЗаявкаID': 'count',
         'Сумма': 'mean'
     }).reset_index()
     dfg['Отказано'] = dfg['ЗаявкаID'] - dfg['Одобрено']
 
-    # График одобрено / отказано
-    approved_fig = px.line(dfg, x='Дата', y=['Одобрено', 'Отказано'], title='Одобрено vs Отказано')
+    # 1. Одобрено / отклонено
+    line_fig = px.line(dfg, x='Дата', y=['Одобрено', 'Отказано'], title='Одобрено vs Отклонено')
 
-    # Средняя сумма по типам
-    avg_loan_fig = px.bar(filtered_df.groupby('ТипКредита')['Сумма'].mean().reset_index(),
-                          x='ТипКредита', y='Сумма', title='Средняя сумма кредита по типу')
+    # 2. Средняя сумма по типу (только Автокредит)
+    avg_loan_fig = px.bar(df.groupby('ТипКредита')['Сумма'].mean().reset_index(),
+                          x='ТипКредита', y='Сумма',
+                          title='Средняя сумма кредита по типу')
 
-    # Распределение времени обработки
-    time_hist_fig = px.histogram(filtered_df, x='ВремяОбработки', title='Распределение времени обработки')
-
-    # Корреляция скоринга и дохода
-    scatter_fig = px.scatter(filtered_df, x='Доход', y='Скоринг', color='ТипКредита',
+    # 3. Корреляция скоринга и дохода
+    scatter_fig = px.scatter(df, x='Доход', y='Скоринг', color='ТипКредита',
                              title='Скоринг vs Доход клиента')
 
-    # Индикаторы
-    total_apps = len(filtered_df)
-    approval_rate = round(filtered_df['Одобрено'].sum() / total_apps * 100, 2)
-    avg_time = round(filtered_df['ВремяОбработки'].mean(), 2)
+    # 4. Индикаторы
+    total_apps = len(df)
+    approval_rate = round(df['Одобрено'].sum() / total_apps * 100, 2) if total_apps > 0 else 0
+    avg_score = round(df['Скоринг'].mean(), 2)
 
     indicators = html.Div([
         dbc.Alert(f"Всего заявок: {total_apps}", color="primary"),
         dbc.Alert(f"Процент одобрения: {approval_rate}%", color="success"),
-        dbc.Alert(f"Среднее время обработки: {avg_time} ч", color="info")
+        dbc.Alert(f"Средний скоринг: {avg_score}", color="info")
     ])
 
-    return approved_fig, avg_loan_fig, time_hist_fig, scatter_fig, filtered_df.to_dict('records'), indicators
+    # Таблица данных
+    table_columns = [{"name": col, "id": col} for col in df.columns if col != 'Телефон']
+    table_data = df.to_dict('records')
 
-# Запуск сервера
+    return (
+        line_fig,
+        avg_loan_fig,
+        scatter_fig,
+        indicators,
+        table_data,
+        table_columns
+    )
+
+
+# --- Добавляем автообновление ---
+app.layout.children.append(
+    dcc.Interval(
+        id='interval-component',
+        interval=3 * 1000,  # каждые 3 секунд
+        n_intervals=0
+    )
+)
+
 if __name__ == '__main__':
     app.run(debug=True)
