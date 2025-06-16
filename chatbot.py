@@ -2,7 +2,7 @@ from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ApplicationBuilder, CommandHandler, ContextTypes, MessageHandler, filters
 
 # Токен из BotFather
-TOKEN = 'YOUR_TELEGRAM_BOT_TOKEN'
+TOKEN = '7293266241:AAHf82BsRaqUBwZuWQwIbTEqHAesAABIJyk'
 
 
 # Команда /start
