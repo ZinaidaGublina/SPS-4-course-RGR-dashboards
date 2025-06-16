@@ -35,6 +35,14 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("Спасибо! Ваша заявка принята. Мы свяжемся с вами.")
         context.user_data.clear()
 
+async def handle_document(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    file = await update.message.document.get_file()
+    await file.download_to_drive(f"documents/{update.message.from_user.id}_passport.jpg")
+    await update.message.reply_text("Спасибо! Паспорт успешно загружен.")
+
+    keyboard = [[InlineKeyboardButton("Открыть дашборд", url="http://127.0.0.1:8050/")]]
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    await update.message.reply_text('Нажмите, чтобы открыть дашборд:', reply_markup=reply_markup)
 
 # Основная функция
 if __name__ == '__main__':
@@ -44,6 +52,7 @@ if __name__ == '__main__':
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CallbackQueryHandler(button_handler))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
+    app.add_handler(MessageHandler(filters.Document.ALL, handle_document))
 
     print("Бот запущен...")
     app.run_polling()
