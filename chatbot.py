@@ -6,31 +6,53 @@ import datetime
 # Токен из BotFather
 TOKEN = '7293266241:AAHf82BsRaqUBwZuWQwIbTEqHAesAABIJyk'
 
-# Функция сохранения заявки в CSV
-# Функция сохранения заявки с типом "Автокредит"
-def save_application(name, phone, amount, purpose):
+# Порог скоринга для одобрения
+SCORING_THRESHOLD = 700
+
+# Функция сохранения заявки
+def save_application(name, phone, amount, income, purpose):
     try:
         df = pd.read_csv("data.csv")
     except FileNotFoundError:
-        df = pd.DataFrame(columns=["Дата", "Имя", "Телефон", "ТипКредита", "Сумма", "Цель"])
+        df = pd.DataFrame(columns=[
+            "Дата", "ЗаявкаID", "ТипКредита", "Сумма", "Доход", "Скоринг",
+            "ВремяОбработки", "Одобрено", "Имя", "Телефон", "Цель"
+        ])
+
+    # Рассчитываем скоринг и статус одобрения
+    scoring = int(float(income) * 0.1 + float(amount) / 10000)
+    approved = 1 if scoring >= SCORING_THRESHOLD else 0
+
+    # Новый ID заявки
+    next_id = 1 if df.empty else df['ЗаявкаID'].max() + 1
 
     new_entry = {
-        "Дата": datetime.datetime.now().strftime("%Y-%m-%d %H:%M"),
+        "Дата": datetime.datetime.now().strftime("%Y-%m-%d"),
+        "ЗаявкаID": next_id,
+        "ТипКредита": "Автокредит",
+        "Сумма": amount,
+        "Доход": income,
+        "Скоринг": scoring,
+        "ВремяОбработки": 1,
+        "Одобрено": approved,
         "Имя": name,
         "Телефон": phone,
-        "ТипКредита": "Автокредит",  # Всегда Автокредит
-        "Сумма": amount,
         "Цель": purpose
     }
 
     df = pd.concat([df, pd.DataFrame([new_entry])], ignore_index=True)
     df.to_csv("data.csv", index=False)
 
+    print("Заявка сохранена:", new_entry)
+
+    return approved  # Возвращаем статус одобрения
+
+
 # Команда /start
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     keyboard = [
         [InlineKeyboardButton("Подать заявку на кредит", callback_data='apply')],
-        [InlineKeyboardButton("Открыть дашборд", url="https://yourusername.pythonanywhere.com")]
+        [InlineKeyboardButton("Открыть дашборд", url="https://yourusername.pythonanywhere.com")]   # 🔗 Ссылка на дашборд
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
     await update.message.reply_text('Здравствуйте! Я помогу вам подать заявку на кредит.', reply_markup=reply_markup)
@@ -44,8 +66,6 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if query.data == 'apply':
         await query.edit_message_text(text="Пожалуйста, укажите ваше имя:")
         context.user_data['step'] = 'name'
-    elif query.data == 'open_dashboard':
-        await query.edit_message_text(text="Нажмите кнопку ниже, чтобы открыть дашборд.")
 
 
 # Обработка текстовых сообщений
@@ -64,27 +84,41 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     elif step == 'amount':
         context.user_data['amount'] = update.message.text
-        await update.message.reply_text("На какую цель вы берете кредит? Например: ремонт, покупка авто и т.п.")
+        await update.message.reply_text("Каков ваш ежемесячный доход?")
+        context.user_data['step'] = 'income'
+
+    elif step == 'income':
+        context.user_data['income'] = update.message.text
+        await update.message.reply_text("На какую цель вы берете кредит? Например: покупка авто.")
         context.user_data['step'] = 'purpose'
 
     elif step == 'purpose':
         context.user_data['purpose'] = update.message.text
 
-        # Сохранение данных
+        # Получаем данные из контекста
         name = context.user_data.get('name')
         phone = context.user_data.get('phone')
         amount = context.user_data.get('amount')
+        income = context.user_data.get('income')
         purpose = context.user_data.get('purpose')
 
-        save_application(name, phone, amount, purpose)
+        # Сохранение заявки
+        approved = save_application(name, phone, amount, income, purpose)
 
-        await update.message.reply_text("Спасибо! Ваша заявка принята. Мы свяжемся с вами.")
+        # Сообщение пользователю
+        if approved:
+            msg = "✅ Ваша заявка одобрена!"
+        else:
+            msg = "❌ К сожалению, заявка не прошла скоринг."
 
-        # Кнопка для дашборда
-        keyboard = [[InlineKeyboardButton("Открыть дашборд", url="http://127.0.0.1:8050/")]]
+        await update.message.reply_text(msg)
+
+        # Кнопка дашборда
+        keyboard = [[InlineKeyboardButton("📊 Открыть дашборд", url="http://127.0.0.1:8050/")]]
         reply_markup = InlineKeyboardMarkup(keyboard)
-        await update.message.reply_text("Вы можете посмотреть аналитику здесь:", reply_markup=reply_markup)
+        await update.message.reply_text("Вы можете посмотреть статистику здесь:", reply_markup=reply_markup)
 
+        # Сброс шагов
         context.user_data.clear()
 
 

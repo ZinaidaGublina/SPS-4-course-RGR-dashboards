@@ -80,6 +80,10 @@ app.layout = dbc.Container([
      Input('dropdown-type', 'value')]
 )
 def update_charts(period, loan_types):
+    # ✅ Читаем CSV при каждом обновлении
+    df = pd.read_csv('data.csv')
+    df['Дата'] = pd.to_datetime(df['Дата'], errors='coerce')
+
     filtered_df = df[df['ТипКредита'].isin(loan_types)]
 
     # Преобразуем 'Дата' в datetime
